@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>彈珠台任務遊戲</title>
+    <style>
+        /* --- 基礎與版面設定 --- */
+        :root {
+            --board-width: 400px;
+            --board-height: 600px;
+            --pin-size: 10px; /* 釘子稍微變大 */
+            --ball-size: 15px;
+            --slot-height: 80px; /* 軌道加深 */
+            --wood-main: #f0d9b5; /* 淺木色 */
+            --wood-border: #c5a27e; /* 深木色 */
+            --pin-color: #5a5a5a;
+            --ball-color: radial-gradient(circle at 5px 5px, #ffffff, #c0c0c0);
+            --slot-bg: #d3bda5;
+            --slot-completed-bg: #86e093; 
+            --slot-completed-border: #5cb85c;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-image: url('background.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            color: white;
+            touch-action: none;
+        }
+
+        /* --- 遊戲主容器 --- */
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .game-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #000000;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.7);
+            margin: 0;
+        }
+
+        .game-board {
+            position: relative;
+            width: var(--board-width);
+            height: var(--board-height);
+            background-color: var(--wood-main);
+            border: 15px solid var(--wood-border);
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            overflow: hidden;
+        }
+
+        /* --- 遊戲元素 --- */
+        .ball {
+            position: absolute;
+            width: var(--ball-size);
+            height: var(--ball-size);
+            background: var(--ball-color);
+            border-radius: 50%;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .pin {
+            position: absolute;
+            width: var(--pin-size);
+            height: var(--pin-size);
+            background-color: var(--pin-color);
+            border-radius: 50%;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.6);
+            z-index: 5;
+        }
+        
+        /* --- 底部任務軌道 --- */
+        .slots-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: calc(100% - 40px);
+            height: var(--slot-height);
+            display: flex;
+            z-index: 1;
+        }
+
+        .slot {
+            flex-grow: 1;
+            height: 100%;
+            background-color: var(--slot-bg);
+            border-right: 2px solid var(--wood-border);
+            border-top: 5px solid var(--wood-border);
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+            position: relative;
+            color: rgba(0,0,0,0.4);
+            font-weight: bold;
+        }
+        .slot:last-child { border-right: none; }
+        .slot.completed {
+            background-color: var(--slot-completed-bg);
+            border-top-color: var(--slot-completed-border);
+        }
+        .slot-number {
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+        }
+
+        /* --- 發射器與軌道 --- */
+        .launch-track {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 40px;
+            height: 100%;
+            background-color: var(--wood-main);
+            box-sizing: border-box;
+            z-index: 1;
+        }
+        .plunger {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 20px;
+            height: 50px;
+            background-color: #e74c3c;
+            border: 3px solid #c0392b;
+            border-radius: 5px;
+            cursor: grab;
+            transition: transform 0.1s ease-out;
+            z-index: 6;
+        }
+        .plunger:active { cursor: grabbing; }
+
+        .track-divider-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .track-divider-svg path {
+            fill: none;
+            stroke: var(--wood-border);
+            stroke-width: 5px;
+            stroke-linecap: round;
+        }
+
+
+        /* --- 控制面板 --- */
+        #message-box {
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        /* --- 任務紙條 --- */
+        .task-note {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 80%;
+            max-width: 300px;
+            padding: 20px;
+            background-color: #fffff0;
+            color: #333;
+            border: 1px solid #ccc;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            transition: transform 0.3s ease-out;
+            z-index: 100;
+            border-radius: 5px;
+        }
+        .task-note.visible { transform: translate(-50%, -50%) scale(1); }
+        .task-note h2 { margin-top: 0; color: #d35400; }
+        .task-note p { font-size: 16px; }
+        .task-note-close {
+            margin-top: 15px;
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <h1 class="game-title">小時候彈珠台</h1>
+        <div class="game-board" id="game-board">
+        </div>
+        <div id="message-box">準備開始...</div>
+    </div>
+    
+    <div id="task-note" class="task-note">
+        <h2 id="task-note-title"></h2>
+        <p id="task-note-content"></p>
+        <button id="task-note-close" class="task-note-close">我知道了</button>
+    </div>
+
+    <script>
+        function startGame() {
+            // --- DOM 元素 ---
+            const gameBoard = document.getElementById('game-board');
+            const messageBox = document.getElementById('message-box');
+            const taskNote = document.getElementById('task-note');
+            const taskNoteTitle = document.getElementById('task-note-title');
+            const taskNoteContent = document.getElementById('task-note-content');
+            const taskNoteClose = document.getElementById('task-note-close');
+
+            // --- 遊戲設定 (常數) ---
+            const ballSize = 15;
+            const pinSize = 10;
+            const numSlots = 16;
+            const slotHeight = 80;
+            const launchTrackWidth = 40;
+            const gravity = 0.15;
+            const bounceFactor = -0.6;
+            const plungerHeight = 50;
+
+            let boardWidth, boardHeight;
+
+            const taskDescriptions = [
+                "去超市買食材做一份粉漿蛋餅", "帶小猴去逛市集", "買材料做一份布丁請室友吃",
+                "找室友一起煮火鍋跟聽「一起吃鍋的朋友」", "自己動手做一份荷蘭煎餅", "找一個天氣好的下午帶小猴去瓦爾河畔野餐",
+                "找一間kringloopwinkel買一個酷酷的東西", "去亞洲超市買一個臺灣也買得到的零食", "買一個小植物來養(希望不會死掉QQ)",
+                "幫自己做一份法式吐司當早餐", "吃壽司！", "找一個拍貼機拍一組照片！",
+                "搭火車隨機挑一個沒去過的小鎮下車玩(邊聽lonely town)", "拍一集小猴與風車的旅遊節目", "找到一個Boris的小玩偶送給小猴",
+                "找到日本小店吃一碗拉麵"
+            ];
+
+            // --- 遊戲狀態 ---
+            let ball = null, plunger = null;
+            let ballState = { x: 0, y: 0, vx: 0, vy: 0 };
+            let pins = [], slots = [];
+            let taskStatus = new Array(numSlots).fill(false);
+            let animationFrameId = null;
+            let isBallInPlay = false;
+            let isDraggingPlunger = false;
+            let plungerPullDistance = 0;
+            let isResetting = false;
+            
+            let isInLaunchPath = false;
+            let launchPathProgress = 0;
+            let launchPower = 0;
+            let launchPathTotalLength = 0;
+            let launchPathVerticalLength = 0;
+            let curveP0, curveP1, curveP2;
+
+
+            const pinLayout = [
+                [20, 20], [40, 20], [60, 20], [80, 20],
+                [10, 30], [30, 30], [50, 30], [70, 30], [90, 30],
+                [20, 40], [40, 40], [60, 40], [80, 40],
+                [10, 50], [30, 50], [50, 50], [70, 50], [90, 50],
+                [20, 60], [40, 60], [60, 60], [80, 60],
+            ];
+
+            function init() {
+                boardWidth = gameBoard.clientWidth;
+                boardHeight = gameBoard.clientHeight;
+
+                gameBoard.innerHTML = '';
+                pins = []; slots = [];
+                
+                pinLayout.forEach(pos => {
+                    const pin = document.createElement('div');
+                    pin.className = 'pin';
+                    const x = (pos[0] / 100) * (boardWidth - launchTrackWidth);
+                    const y = (pos[1] / 100) * boardHeight;
+                    pin.style.left = `${x - pinSize / 2}px`;
+                    pin.style.top = `${y - pinSize / 2}px`;
+                    gameBoard.appendChild(pin);
+                    pins.push({ x, y, radius: pinSize / 2 });
+                });
+
+                createSlotsAndLauncher();
+                
+                ball = document.createElement('div');
+                ball.className = 'ball';
+                gameBoard.appendChild(ball);
+                
+                loadProgress();
+                updateSlotsVisual();
+                checkDailyPlay();
+                resetBallPosition();
+            }
+
+            function createSlotsAndLauncher() {
+                const slotsContainer = document.createElement('div');
+                slotsContainer.className = 'slots-container';
+                for (let i = 0; i < numSlots; i++) {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    slot.id = `slot-${i}`;
+                    const numberSpan = document.createElement('span');
+                    numberSpan.className = 'slot-number';
+                    numberSpan.textContent = i + 1;
+                    slot.appendChild(numberSpan);
+                    slotsContainer.appendChild(slot);
+                    slots.push(slot);
+                }
+                gameBoard.appendChild(slotsContainer);
+
+                const launchTrack = document.createElement('div');
+                launchTrack.className = 'launch-track';
+                gameBoard.appendChild(launchTrack);
+
+                const svgNS = "http://www.w3.org/2000/svg";
+                const dividerSvg = document.createElementNS(svgNS, "svg");
+                dividerSvg.setAttribute('class', 'track-divider-svg');
+                
+                const path = document.createElementNS(svgNS, "path");
+                
+                const curveStartX = boardWidth - launchTrackWidth;
+                const curveStartY = 130; 
+                const curveEndX = boardWidth - launchTrackWidth - 80;
+                const curveEndY = 50;
+                const pathD = `M ${curveStartX},${boardHeight} V ${curveStartY} Q ${curveStartX},${curveEndY} ${curveEndX},${curveEndY}`;
+                path.setAttribute('d', pathD);
+                
+                dividerSvg.appendChild(path);
+                gameBoard.appendChild(dividerSvg);
+
+                curveP0 = { x: curveStartX, y: curveStartY };
+                curveP1 = { x: curveStartX, y: curveEndY };
+                curveP2 = { x: curveEndX, y: curveEndY };
+
+                launchPathVerticalLength = boardHeight - curveStartY;
+                const curveLength = getCurveLength();
+                launchPathTotalLength = launchPathVerticalLength + curveLength;
+
+
+                plunger = document.createElement('div');
+                plunger.className = 'plunger';
+                gameBoard.appendChild(plunger);
+                addPlungerEvents();
+            }
+            
+            function saveProgress() {
+                localStorage.setItem('pinballTaskStatus', JSON.stringify(taskStatus));
+            }
+            function loadProgress() {
+                const savedStatus = localStorage.getItem('pinballTaskStatus');
+                if (savedStatus) {
+                    taskStatus = JSON.parse(savedStatus);
+                }
+            }
+            function updateSlotsVisual() {
+                taskStatus.forEach((isDone, i) => {
+                    slots[i].classList.toggle('completed', isDone);
+                });
+            }
+
+            function checkDailyPlay() {
+                const lastPlayDate = localStorage.getItem('lastPlayDate');
+                const today = new Date().toDateString();
+
+                if (taskStatus.every(status => status === true)) {
+                    messageBox.textContent = '� 恭喜！所有任務已全部完成！';
+                    if (plunger) plunger.style.pointerEvents = 'none';
+                    return;
+                }
+
+                if (lastPlayDate === today) {
+                    messageBox.textContent = '今天已完成任務，明天再來！';
+                    if (plunger) plunger.style.pointerEvents = 'none';
+                } else {
+                    messageBox.textContent = '拉動右下角發射器來開始！';
+                    if (plunger) plunger.style.pointerEvents = 'auto';
+                }
+            }
+            function markTodayAsPlayed() {
+                const today = new Date().toDateString();
+                localStorage.setItem('lastPlayDate', today);
+            }
+
+            function addPlungerEvents() {
+                let startY = 0;
+                const maxPull = 60;
+
+                function onDragStart(e) {
+                    if (isBallInPlay || isResetting || plunger.style.pointerEvents === 'none') return;
+                    isDraggingPlunger = true;
+                    startY = e.touches ? e.touches[0].clientY : e.clientY;
+                    plunger.style.transition = 'none';
+                    document.body.style.cursor = 'grabbing';
+                }
+
+                function onDrag(e) {
+                    if (!isDraggingPlunger) return;
+                    e.preventDefault();
+                    const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                    if (typeof currentY === 'undefined') return;
+                    let pull = currentY - startY;
+                    if (pull < 0) pull = 0;
+                    if (pull > maxPull) pull = maxPull;
+                    plungerPullDistance = pull;
+                    plunger.style.transform = `translateY(${plungerPullDistance}px)`;
+                    resetBallPosition(plungerPullDistance);
+                }
+
+                function onDragEnd() {
+                    if (!isDraggingPlunger) return;
+                    isDraggingPlunger = false;
+                    plunger.style.transition = 'transform 0.1s ease-out';
+                    plunger.style.transform = 'translateY(0px)';
+                    document.body.style.cursor = 'default';
+                    if (plungerPullDistance > 10) {
+                        launchBall(plungerPullDistance / maxPull);
+                    }
+                    plungerPullDistance = 0;
+                }
+
+                plunger.addEventListener('mousedown', onDragStart);
+                document.addEventListener('mousemove', onDrag);
+                document.addEventListener('mouseup', onDragEnd);
+                plunger.addEventListener('touchstart', onDragStart);
+                document.addEventListener('touchmove', onDrag, { passive: false });
+                document.addEventListener('touchend', onDragEnd);
+            }
+
+            function launchBall(power) {
+                if (isBallInPlay) return;
+                isBallInPlay = true;
+                isInLaunchPath = true;
+                launchPathProgress = 0;
+                launchPower = 15 + power * 10;
+                messageBox.textContent = '發射！';
+                gameLoop();
+            }
+
+            function resetBallPosition(pullDistance = 0) {
+                if (isBallInPlay) return;
+                const plungerTop = boardHeight - 10 - plungerHeight;
+                ballState.x = boardWidth - launchTrackWidth / 2;
+                ballState.y = plungerTop - ballSize + pullDistance;
+                ball.style.transform = `translate(${ballState.x - ballSize / 2}px, ${ballState.y - ballSize / 2}px)`;
+                ball.style.visibility = 'visible';
+            }
+
+            function gameLoop() {
+                if (isInLaunchPath) {
+                    launchPathProgress += launchPower;
+                    
+                    let currentPos, tangent;
+
+                    if (launchPathProgress < launchPathVerticalLength) {
+                        const progress = launchPathProgress / launchPathVerticalLength;
+                        currentPos = {
+                            x: boardWidth - launchTrackWidth / 2,
+                            y: boardHeight - progress * launchPathVerticalLength
+                        };
+                        tangent = { x: 0, y: -1 };
+                    } else {
+                        const curveProgress = (launchPathProgress - launchPathVerticalLength) / (launchPathTotalLength - launchPathVerticalLength);
+                        currentPos = getPointOnCurve(curveProgress);
+                        tangent = getCurveTangent(curveProgress);
+                    }
+
+                    ballState.x = currentPos.x;
+                    ballState.y = currentPos.y;
+
+                    if (launchPathProgress >= launchPathTotalLength) {
+                        isInLaunchPath = false;
+                        ballState.vx = tangent.x * launchPower * 0.2;
+                        ballState.vy = tangent.y * launchPower * 0.2;
+                    }
+
+                } else {
+                    ballState.vy += gravity;
+                    ballState.x += ballState.vx;
+                    ballState.y += ballState.vy;
+                    handleMainAreaPhysics();
+                }
+                
+                if (ballState.x < boardWidth - launchTrackWidth && ballState.y > boardHeight - slotHeight) {
+                    handleSlotDrop();
+                    return;
+                }
+
+                if (ballState.x > boardWidth - launchTrackWidth && ballState.vy > 0 && ballState.y > boardHeight - plungerHeight) {
+                    messageBox.textContent = '力道不足！再試一次。';
+                    isBallInPlay = false;
+                    isInLaunchPath = false;
+                    resetBallPosition();
+                    return;
+                }
+                
+                ball.style.transform = `translate(${ballState.x - ballSize / 2}px, ${ballState.y - ballSize / 2}px)`;
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+
+            function handleMainAreaPhysics() {
+                if (ballState.y < ballSize / 2) {
+                    ballState.y = ballSize / 2;
+                    ballState.vy *= bounceFactor;
+                }
+                if (ballState.x < ballSize / 2) {
+                    ballState.x = ballSize / 2;
+                    ballState.vx *= bounceFactor;
+                }
+                if (ballState.x > boardWidth - ballSize / 2) {
+                    ballState.x = boardWidth - ballSize / 2;
+                    ballState.vx *= bounceFactor;
+                }
+                handlePinCollisions();
+            }
+            
+            function handlePinCollisions() {
+                pins.forEach(pin => {
+                    const dx = ballState.x - pin.x;
+                    const dy = ballState.y - pin.y;
+                    const distance = Math.hypot(dx, dy);
+                    const minDistance = ballSize / 2 + pin.radius;
+                    if (distance < minDistance) {
+                        const angle = Math.atan2(dy, dx);
+                        const overlap = minDistance - distance;
+                        ballState.x += Math.cos(angle) * overlap;
+                        ballState.y += Math.sin(angle) * overlap;
+                        const dotProduct = ballState.vx * Math.cos(angle) + ballState.vy * Math.sin(angle);
+                        ballState.vx -= 1.8 * dotProduct * Math.cos(angle);
+                        ballState.vy -= 1.8 * dotProduct * Math.sin(angle);
+                    }
+                });
+            }
+
+            function getCurveLength() {
+                let length = 0;
+                let lastPoint = getPointOnCurve(0);
+                for (let t = 0.01; t <= 1; t += 0.01) {
+                    const currentPoint = getPointOnCurve(t);
+                    length += Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
+                    lastPoint = currentPoint;
+                }
+                return length;
+            }
+
+            function getPointOnCurve(t) {
+                if (t > 1) t = 1;
+                const x = (1 - t) ** 2 * curveP0.x + 2 * (1 - t) * t * curveP1.x + t ** 2 * curveP2.x;
+                const y = (1 - t) ** 2 * curveP0.y + 2 * (1 - t) * t * curveP1.y + t ** 2 * curveP2.y;
+                return { x, y };
+            }
+
+            function getCurveTangent(t) {
+                if (t > 1) t = 1;
+                const dx = 2 * (1 - t) * (curveP1.x - curveP0.x) + 2 * t * (curveP2.x - curveP1.x);
+                const dy = 2 * (1 - t) * (curveP1.y - curveP0.y) + 2 * t * (curveP2.y - curveP1.y);
+                const mag = Math.hypot(dx, dy);
+                if (mag === 0) return { x: -1, y: 0 };
+                return { x: dx / mag, y: dy / mag };
+            }
+
+            function handleSlotDrop() {
+                if (!isBallInPlay) return;
+                isBallInPlay = false;
+                isResetting = true;
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+
+                const slotWidth = (boardWidth - launchTrackWidth) / numSlots;
+                const slotIndex = Math.floor(ballState.x / slotWidth);
+
+                if (slotIndex >= 0 && slotIndex < numSlots) {
+                    const finalX = slotIndex * slotWidth + slotWidth / 2;
+                    const finalY = boardHeight - ballSize / 2;
+                    ball.style.transition = 'transform 0.3s ease-in';
+                    ball.style.transform = `translate(${finalX - ballSize / 2}px, ${finalY}px)`;
+
+                    setTimeout(() => {
+                        ball.style.transition = '';
+                        
+                        if (!taskStatus[slotIndex]) {
+                            taskStatus[slotIndex] = true;
+                            slots[slotIndex].classList.add('completed');
+                            messageBox.textContent = `🎉 新任務完成：軌道 ${slotIndex + 1}！`;
+                            showTaskNote(slotIndex);
+                            saveProgress();
+                            markTodayAsPlayed();
+                            if (plunger) plunger.style.pointerEvents = 'none';
+                        } else {
+                            messageBox.textContent = `軌道 ${slotIndex + 1} 已完成過！請再試一次。`;
+                            setTimeout(() => {
+                                resetBallPosition();
+                                isResetting = false;
+                            }, 1500);
+                        }
+                        
+                        const allTasksDone = taskStatus.every(status => status === true);
+                        if (allTasksDone) {
+                            messageBox.textContent = '🏆 恭喜！所有任務已全部完成！';
+                            if (plunger) plunger.style.pointerEvents = 'none';
+                        }
+                        
+                    }, 300);
+                } else {
+                    resetBallPosition();
+                    isResetting = false;
+                }
+            }
+
+            function showTaskNote(index) {
+                taskNoteTitle.textContent = `任務 ${index + 1}`;
+                taskNoteContent.textContent = taskDescriptions[index];
+                taskNote.classList.add('visible');
+            }
+            taskNoteClose.addEventListener('click', () => taskNote.classList.remove('visible'));
+
+            init();
+        }
+
+        requestAnimationFrame(startGame);
+    </script>
+</body>
+</html>
+�
